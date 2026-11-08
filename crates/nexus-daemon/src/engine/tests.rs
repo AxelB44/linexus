@@ -32,6 +32,7 @@ fn engine(runtime: Runtime, scratch: &Scratch) -> Engine {
         feedback,
         notifications: crate::notifications::Notifications::off(),
         obs: crate::obs::Obs::off(),
+        discord: crate::discord::Discord::off(),
         focus: crate::focus::Focus::off(),
         logger,
         state_path: None,
@@ -338,6 +339,55 @@ fn track_overlay_shows_the_new_track() {
         Some(Overlay::NowPlaying(media)) => assert_eq!(media.title, "Second"),
         other => panic!("expected the track overlay, got {other:?}"),
     }
+}
+
+/// Joining Discord voice brings up the profile that follows voice; leaving
+/// returns to the one before, unless the user switched in between.
+#[test]
+fn discord_voice_switches_to_its_profile_and_back() {
+    let scratch = Scratch::new("discord-voice");
+    let mut config = nexus_config::default_config();
+    let mut voice = config.profiles[0].clone();
+    voice.id = "voice".into();
+    voice.discord_voice = true;
+    let mut other = config.profiles[0].clone();
+    other.id = "other".into();
+    config.profiles.extend([voice, other]);
+    let mut engine = engine(Runtime::from_config(config, None), &scratch);
+    let t = Instant::now();
+
+    engine.follow_voice(true, t);
+    assert_eq!(engine.runtime.profile().id, "voice");
+    engine.follow_voice(true, t + ms(100));
+    assert_eq!(engine.runtime.profile().id, "voice");
+    engine.follow_voice(false, t + ms(200));
+    assert_eq!(engine.runtime.profile().id, "default");
+
+    engine.follow_voice(true, t + ms(300));
+    engine.switch_profile("other", t + ms(400)).unwrap();
+    engine.follow_voice(false, t + ms(500));
+    assert_eq!(engine.runtime.profile().id, "other");
+}
+
+/// A push-to-talk button does nothing on its own tap; without Discord it
+/// does not leave the engine thinking the microphone is open.
+#[test]
+fn push_to_talk_needs_discord() {
+    let scratch = Scratch::new("push-to-talk");
+    let mut config = nexus_config::default_config();
+    let talk = ActionSpec::Discord {
+        command: DiscordCommand::PushToTalk,
+        channel: None,
+        step: None,
+    };
+    config.profiles[0].pages[0].widgets = vec![button("talk", talk)];
+    let mut engine = engine(Runtime::from_config(config, None), &scratch);
+    let t = Instant::now();
+    engine.touch_event(TouchPhase::Began, 50, t);
+    assert!(!engine.talking);
+    engine.touch_event(TouchPhase::Ended, 50, t + ms(300));
+    engine.tick(t + ms(400));
+    assert!(!engine.talking);
 }
 
 /// Calibration takes over the strip: its touches measure the panel instead

@@ -1,3 +1,4 @@
+mod discord;
 mod feeds;
 mod integrations;
 mod obs;
@@ -8,6 +9,13 @@ pub use providers::clock::{local_clock, LocalClock};
 
 pub use feeds::{cached_feed_titles, inspect_feed_url, FeedInspection};
 
+pub use discord::{
+    authorize as discord_authorize, avatar_url as discord_avatar_url, discord_guilds,
+    sign_in as discord_sign_in, socket_paths as discord_socket_paths,
+    voice_channels as discord_voice_channels, DiscordApp, DiscordChannel, DiscordConnection,
+    DiscordError, DiscordEvent, DiscordGuild, DiscordToken, VoiceMember as DiscordVoiceMember,
+    NOTIFICATIONS_SCOPE as DISCORD_NOTIFICATIONS_SCOPE, REDIRECT_URI as DISCORD_REDIRECT_URI,
+};
 pub use obs::{
     input_names as obs_input_names, obs_overview, ObsConnection, ObsError, ObsEvent, ObsOverview,
     ObsServer, DEFAULT_PORT as OBS_DEFAULT_PORT, MAX_INPUTS as OBS_MAX_INPUTS,
@@ -688,6 +696,10 @@ pub struct SensorConfig {
     /// OBS Studio's websocket server, for OBS buttons.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub obs_server: Option<ObsServer>,
+    /// The user's own Discord application and its token, for Discord
+    /// buttons and the voice widget.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub discord: Option<DiscordApp>,
 }
 
 /// How the sensors page presents headlines. Read by the daemon on every
@@ -1172,6 +1184,23 @@ pub fn update_news_config(
     write_sensor_config(config)
 }
 
+/// Stores a renewed Discord token, keeping everything else as stored on
+/// disk. Does nothing when the application changed or was removed since
+/// (Studio wins), or when sensors.json does not parse.
+pub fn store_discord_token(client_id: &str, token: DiscordToken) -> std::io::Result<()> {
+    let _guard = SENSOR_CONFIG_WRITE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let text = read_sensor_config_text(&sensor_config_path())?;
+    let mut config = serde_json::from_str::<SensorConfig>(&text)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+    match config.discord.as_mut() {
+        Some(app) if app.client_id == client_id => app.token = Some(token),
+        _ => return Ok(()),
+    }
+    write_sensor_config(config).map(drop)
+}
+
 /// Normalizes and writes atomically (temp file + rename), so the daemon's
 /// once-a-second reader never sees a half-written file. The file holds the
 /// Home Assistant token, the IFTTT key and MQTT passwords, so it is 0600.
@@ -1263,6 +1292,17 @@ fn normalize_sensor_config(config: &mut SensorConfig) {
         .is_some_and(|server| server.host.is_empty() || server.port == 0)
     {
         config.obs_server = None;
+    }
+    if let Some(app) = config.discord.as_mut() {
+        app.client_id = app.client_id.trim().to_string();
+        app.client_secret = app.client_secret.trim().to_string();
+    }
+    if config
+        .discord
+        .as_ref()
+        .is_some_and(|app| app.client_id.is_empty())
+    {
+        config.discord = None;
     }
     for ifttt in &mut config.ifttt {
         ifttt.id = sanitize_sensor_id(&ifttt.id);
