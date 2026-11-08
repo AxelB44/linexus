@@ -339,3 +339,47 @@ fn track_overlay_shows_the_new_track() {
         other => panic!("expected the track overlay, got {other:?}"),
     }
 }
+
+/// Calibration takes over the strip: its touches measure the panel instead
+/// of reaching widgets, and Studio reads the result.
+#[test]
+fn calibration_measures_the_panel_and_reports_it() {
+    use nexus_ipc::{CalibrateAction, CalibrationState};
+    let scratch = Scratch::new("calibration");
+    let mut engine = engine(
+        Runtime::from_config(nexus_config::default_config(), None),
+        &scratch,
+    );
+    let t = Instant::now();
+    let calibrate = |engine: &mut Engine, action| {
+        let (response, _) = engine.handle_request(Command::Calibrate { action }, t);
+        response.calibration.unwrap()
+    };
+    assert_eq!(
+        calibrate(&mut engine, CalibrateAction::Status).state,
+        CalibrationState::Idle
+    );
+    let started = calibrate(&mut engine, CalibrateAction::Start);
+    assert_eq!(
+        (started.state, started.step),
+        (CalibrationState::Running, 0)
+    );
+    assert!(engine.calibrating());
+    // A panel that reads every touch 20 px to the left.
+    for n in 0..started.steps {
+        let mark = crate::calibration::MARKS[n % crate::calibration::MARKS.len()];
+        engine.calibration_touch(TouchPhase::Began, mark - 20, t);
+        engine.calibration_touch(TouchPhase::Ended, mark - 20, t);
+    }
+    assert!(!engine.calibrating());
+    let done = calibrate(&mut engine, CalibrateAction::Status);
+    assert_eq!(done.state, CalibrationState::Done);
+    assert_eq!((done.left, done.right), (Some(20), Some(20)));
+
+    calibrate(&mut engine, CalibrateAction::Start);
+    engine.tick(t + Duration::from_secs(31));
+    assert_eq!(
+        calibrate(&mut engine, CalibrateAction::Status).state,
+        CalibrationState::Cancelled
+    );
+}

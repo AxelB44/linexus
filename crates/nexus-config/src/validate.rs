@@ -10,6 +10,8 @@ pub const MAX_SEQUENCE_STEPS: usize = 16;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ConfigError {
+    #[error("touch correction {left}/{right} px is out of range (at most {max} px either way)", max = MAX_TOUCH_CORRECTION)]
+    InvalidTouchCorrection { left: i16, right: i16 },
     #[error("unsupported config schema version {actual}; expected {expected}")]
     UnsupportedSchema { expected: u32, actual: u32 },
     #[error("active profile '{0}' does not exist")]
@@ -85,6 +87,13 @@ pub fn validate(config: &NexusConfig) -> Result<()> {
         return Err(ConfigError::UnsupportedSchema {
             expected: crate::SCHEMA_VERSION,
             actual: config.schema_version,
+        });
+    }
+    let touch = config.settings.touch;
+    if touch.left.abs() > MAX_TOUCH_CORRECTION || touch.right.abs() > MAX_TOUCH_CORRECTION {
+        return Err(ConfigError::InvalidTouchCorrection {
+            left: touch.left,
+            right: touch.right,
         });
     }
     if config.settings.idle.dim_percent > 100 {

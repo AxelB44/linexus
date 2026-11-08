@@ -6,14 +6,15 @@ All notable changes to this project are listed here. The format follows [Keep a 
 
 ### Added
 
+- Touch correction (`settings.touch`, Studio → Device): moves the strip's touches by a number of pixels at its left and right edges, for panels that read touches beside the finger. Calibrate fills it in: the strip shows marks to touch one after the other, and Studio shows the measured correction to apply.
 - `linexusctl render-preview --overlay notification|volume|track` draws the pop-ups the strip shows over a page, in the language of `--locale`.
 
 ### Fixed
 
+- Swiping right on the strip goes back to the previous page again. The strip reports X = 0 when the finger lifts, so every swipe used to end at the left edge and turned into "next page".
 - `linexusctl render-preview` offers the Streaming template, and countdown and stopwatch widgets of a config page show running sample times instead of the pomodoro's.
 
 ## [1.3.0] - 2026-10-22
-- Swiping right on the strip goes back to the previous page again. The strip reports X = 0 when the finger lifts, so every swipe used to end at the left edge and turned into "next page".
 
 ### Added
 

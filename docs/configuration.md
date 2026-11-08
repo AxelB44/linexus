@@ -75,6 +75,7 @@ All fields are optional.
 | `weather` | location or `null` | `null` | Default place for weather widgets: `{"name": "Berlin", "latitude": 52.52, "longitude": 13.405}` |
 | `notifications` | object | see below | Desktop notifications on the strip |
 | `overlays` | object | see below | Short pop-ups for volume and track changes |
+| `touch` | object | see below | Correction for a touch panel that reads touches beside the finger |
 
 `idle`:
 
@@ -111,6 +112,17 @@ Notification text is cut to 1024 characters. A picture sent inline with more tha
 |---|---|---|---|
 | `volume` | boolean | `true` | Show a volume bar when the system volume changes, unless the page already has a volume widget |
 | `now_playing` | boolean | `true` | Show the new track when the playing track changes, unless the page already has a media widget |
+
+`touch`:
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `left` | number | `0` | Pixels added to touches at the left edge of the strip; positive moves them to the right |
+| `right` | number | `0` | The same at the right edge; in between the correction changes in proportion |
+
+Both stay within ±100. The daemon corrects the strip's own touches only; taps from Studio's mirror and the emulator are exact.
+
+Studio → Device → Calibrate measures it: the strip shows five marks across its width, twice, one after the other, and you touch the center of each. A line fitted through the ten touches gives both values, which Studio shows to apply or discard. A calibration ends after 30 seconds without a touch, and fails when the touches are too far from the marks (a stretch of more than 25 % or a correction beyond ±100 px). By hand, `linexusctl touch` prints what the panel reports while `linexusctl demo --pattern border-grid` shows lines every 100 px (stop the daemon first).
 
 ## Profiles
 
@@ -281,6 +293,8 @@ A Home Assistant light or switch. Needs the Home Assistant connection set up in 
 
 Built-in tap: toggles the entity.
 
+Who sits in the voice channels of a Discord server, with their profile pictures: one tile per channel, the channel you are in first and lit up, a green ring around whoever speaks and a red badge on muted or deafened members. A tile is as wide as its pictures, at least 56 px; longer channel names are cut. When the channels do not all fit, they take turns a page at a time every 5 seconds, with dots below; the turning waits while the strip was touched in the last 10 seconds. Needs Discord set up in Studio under Connections (see [`discord`](#discord)).
+Built-in tap: tap someone to open their controls: mute them for you, quieter or louder in steps of 10 % (0 to 200 %), close. The controls close on their own after 8 seconds without a touch. These settings are yours only, as in Discord's own menu. Tapping yourself opens your microphone's controls instead (mute, quieter, louder, 0 to 100 %), since Discord sets no volume of yours for you.
 ### timer
 
 | Field | Default | Meaning |
