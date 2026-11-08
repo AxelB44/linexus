@@ -13,6 +13,7 @@ All notable changes to this project are listed here. The format follows [Keep a 
 - `linexusctl render-preview` offers the Streaming template, and countdown and stopwatch widgets of a config page show running sample times instead of the pomodoro's.
 
 ## [1.3.0] - 2026-10-22
+- Swiping right on the strip goes back to the previous page again. The strip reports X = 0 when the finger lifts, so every swipe used to end at the left edge and turned into "next page".
 
 ### Added
 

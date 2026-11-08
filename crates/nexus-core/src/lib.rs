@@ -169,17 +169,18 @@ impl TouchParser {
         }
         let next_active = bytes[5] != 0;
         let raw_x = u16::from_le_bytes([bytes[6], bytes[7]]);
+        // The lift report carries no position (the strip sends X = 0), so a
+        // touch ends where it was last seen. Taking the lift's X made every
+        // drag look like it ended at the left edge: all swipes went forward.
+        if self.active && !next_active {
+            self.active = false;
+            return Some(TouchEvent {
+                phase: TouchPhase::Ended,
+                x: self.last_x,
+            });
+        }
         if raw_x as usize >= WIDTH {
-            // Positions off the panel are dropped, but a lift still ends the
-            // touch where it was last seen: a lost `Ended` leaves the press
-            // (and any repeating hold) running.
-            if self.active && !next_active {
-                self.active = false;
-                return Some(TouchEvent {
-                    phase: TouchPhase::Ended,
-                    x: self.last_x,
-                });
-            }
+            // Positions off the panel are dropped.
             return None;
         }
 
@@ -653,6 +654,30 @@ mod protocol_tests {
                 x: 50
             })
         );
+    }
+
+    #[test]
+    fn lift_report_x_is_ignored_so_rightward_swipes_go_back() {
+        // Captured from a real strip: the lift report always says X = 0.
+        let mut parser = TouchParser::default();
+        let mut recognizer = GestureRecognizer::default();
+        for x in [58u8, 120, 200] {
+            let event = parser
+                .parse_report(&[0x01, 0x02, 0x21, 0, 0, 1, x, 0])
+                .unwrap();
+            assert!(recognizer.feed(event).is_none());
+        }
+        let lift = parser
+            .parse_report(&[0x01, 0x02, 0x21, 0, 0, 0, 0, 0])
+            .unwrap();
+        assert_eq!(
+            lift,
+            TouchEvent {
+                phase: TouchPhase::Ended,
+                x: 200
+            }
+        );
+        assert_eq!(recognizer.feed(lift), Some(Gesture::SwipeRight { x: 58 }));
     }
 
     #[test]
