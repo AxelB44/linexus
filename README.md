@@ -75,6 +75,10 @@ Record, pause, stream, switch scenes, mute audio sources, save replay clips and 
 
 <img src="docs/images/studio-obs.webp" alt="The OBS Studio connection in Studio: computer, port and password, and the result of the test: connected to OBS 32.2.2, four scenes found" width="628">
 
+### Discord
+
+See who sits in your server's voice channels, with their profile pictures and a green ring around whoever speaks, and tap a channel to join it. A second widget shows the channel you are in with the connection's ping; tap someone to mute them for you or change their volume. Buttons mute your microphone, deafen you, talk while held, join a channel or leave voice, step your microphone or Discord's sound, and toggle noise suppression, echo cancellation, automatic gain or push to talk; a slider sets either level. Discord's message notifications show on the strip with the author's picture, and a tap opens the conversation. A red badge reminds you while you sit muted, and a profile can come up by itself while you are in voice. Linexus talks to the official Discord app on your computer; you connect it once in Studio with a Discord application of your own, which Discord requires for this kind of remote control. Vesktop and other clients built on arRPC cannot be controlled this way.
+
 ### Desktop notifications
 
 Notifications slide over the current page for a few seconds, with the app's icon or the picture they carry. They come from any app, GNOME and Flatpak apps included, and follow your desktop: during Do Not Disturb only urgent ones appear, and apps whose pop-ups you turned off stay off the strip too. A touch dismisses them. Turn them on under Connections in Studio.
@@ -163,7 +167,7 @@ Studio checks device access, the services and the helper programs, and gives the
 
 ### Backups you can share
 
-Export all profiles, pages and images as one `.nexuspack` file and import it on another computer. Before an import replaces anything, Studio lists the buttons that run programs, type text or press keys, send web requests, open apps, files or links, call Home Assistant or control OBS, so you know what you bring in.
+Export all profiles, pages and images as one `.nexuspack` file and import it on another computer. Before an import replaces anything, Studio lists the buttons that run programs, type text or press keys, send web requests, open apps, files or links, call Home Assistant or control OBS or Discord, so you know what you bring in.
 
 <img src="docs/images/studio-import.webp" alt="The import dialog for a backup: three profiles, twelve pages and one image, a notice that some buttons act outside the strip, and the first of those buttons grouped by what they do" width="100%">
 
