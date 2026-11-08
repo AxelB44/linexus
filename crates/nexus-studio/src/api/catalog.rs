@@ -176,7 +176,8 @@ fn geocode(request: &Request) -> Response {
     let lang = match request.query_param("lang").as_deref() {
         None | Some("en") => "en",
         Some("de") => "de",
-        Some(_) => return Response::error(400, "lang must be en or de"),
+        Some("fr") => "fr",
+        Some(_) => return Response::error(400, "lang must be en, de or fr"),
     };
     match providers::geocode(query, lang) {
         Ok(places) => {
@@ -291,7 +292,7 @@ mod tests {
         for path in [
             "/api/geocode",
             "/api/geocode?q=%20",
-            "/api/geocode?q=Berlin&lang=fr",
+            "/api/geocode?q=Berlin&lang=es",
         ] {
             assert_eq!(handle(&get(path), &state).status, 400, "{path}");
         }

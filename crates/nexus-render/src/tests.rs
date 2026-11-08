@@ -319,3 +319,15 @@ fn obs_buttons_show_what_obs_does() {
     };
     assert_eq!(widgets::text::expand("{obs.scene}", &ctx), "–");
 }
+
+#[test]
+fn calibration_screen_shows_the_mark_and_progress() {
+    let theme = Theme::default();
+    let first = calibration_frame(&theme, Locale::Fr, Some(40), 0, 10);
+    let right = calibration_frame(&theme, Locale::Fr, Some(600), 4, 10);
+    snapshot("calibration-first", &first);
+    snapshot("calibration-right", &right);
+    assert_ne!(first.rgba(), right.rgba());
+    let done = calibration_frame(&theme, Locale::Fr, None, 10, 10);
+    assert_eq!(done.rgba().len(), WIDTH * HEIGHT * 4);
+}
