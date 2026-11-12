@@ -50,6 +50,10 @@ const MAX_NOTIFICATIONS: usize = 8;
 /// Percent per press of the volume buttons.
 const VOLUME_STEP: u8 = 10;
 const NOT_CONNECTED: &str = "Discord is not connected";
+/// Where a direct or group call is kept among the servers' channels.
+pub(crate) const PRIVATE: &str = "@me";
+const RECONNECT_FOR_NOTIFICATIONS: &str =
+    "notifications need Connect clicked again in Studio, under Connections";
 
 type LoadApp = Box<dyn Fn() -> Option<DiscordApp> + Send>;
 
@@ -155,6 +159,7 @@ impl Discord {
             logger: logger.clone(),
             load: Box::new(|| nexus_sensors::load_sensor_config().discord),
             avatars: HashMap::new(),
+            told_reconnect: false,
         };
         let started = thread::Builder::new()
             .name("discord".into())
@@ -432,7 +437,16 @@ impl Tracked {
     fn guilds_for(&self, wanted: &Wanted) -> BTreeSet<String> {
         let mut guilds = wanted.guilds.clone();
         if wanted.current_guild {
-            guilds.extend(self.guild.clone());
+            match &self.guild {
+                Some(guild) => {
+                    guilds.insert(guild.clone());
+                }
+                // A call outside any server: a direct or group call.
+                None if self.channel.is_some() => {
+                    guilds.insert(PRIVATE.to_string());
+                }
+                None => {}
+            }
         }
         guilds
     }
@@ -535,6 +549,8 @@ struct Worker {
     load: LoadApp,
     /// Decoded pictures by URL; None when one could not be fetched.
     avatars: HashMap<String, Option<Arc<Pixmap>>>,
+    /// The strip said once that notifications need Discord connected again.
+    told_reconnect: bool,
 }
 
 impl Worker {
@@ -664,6 +680,23 @@ impl Worker {
             .is_some_and(|token| token.has_scope(nexus_sensors::DISCORD_NOTIFICATIONS_SCOPE));
         let mut notifying = false;
         let mut notify_refused = false;
+        let wants_notifications = self.wanted().flatten().is_some_and(|w| w.notifications);
+        if wants_notifications && !may_notify && !std::mem::replace(&mut self.told_reconnect, true)
+        {
+            // A token from before Linexus asked for notifications: they can
+            // only come after the user allows them in Discord's prompt.
+            log_fields(
+                &self.logger,
+                Level::Warn,
+                "discord_notifications_not_allowed",
+                "Discord notifications need Connect clicked again in Studio",
+                [("user", user.to_string())],
+            );
+            let _ = self.feedback.send(Feedback {
+                label: "Discord".into(),
+                error: RECONNECT_FOR_NOTIFICATIONS.into(),
+            });
+        }
         let mut config_checked = Instant::now();
         let mut resync_at = Instant::now();
         let ended = loop {
@@ -896,55 +929,68 @@ impl Worker {
             tracked.listed.remove(&guild);
         }
         for guild in guilds {
-            let stale = tracked
-                .listed
-                .get(&guild)
-                .is_none_or(|at| at.elapsed() >= CHANNELS_EVERY);
-            if !stale && !resync {
-                continue;
-            }
-            if stale {
-                let answer = match discord.command("GET_CHANNELS", json!({ "guild_id": guild })) {
-                    Ok(answer) => answer,
-                    // Not a member any more, or not allowed: show nothing.
-                    Err(DiscordError::Command { .. }) => Value::Null,
-                    Err(error) => return Err(error),
-                };
-                let listed = nexus_sensors::discord_voice_channels(&answer);
-                let old = tracked.guilds.remove(&guild).unwrap_or_default();
-                let channels = listed
-                    .into_iter()
-                    .take(MAX_CHANNELS)
-                    .map(|channel| Channel {
-                        members: old
-                            .iter()
-                            .find(|o| o.id == channel.id)
-                            .map(|o| o.members.clone())
-                            .unwrap_or_default(),
-                        id: channel.id,
-                        name: channel.name,
-                    })
-                    .collect();
-                tracked.guilds.insert(guild.clone(), channels);
-                tracked.listed.insert(guild.clone(), Instant::now());
+            if guild == PRIVATE {
+                if !Self::follow_private(discord, tracked)? && !resync {
+                    continue;
+                }
+            } else {
+                let stale = tracked
+                    .listed
+                    .get(&guild)
+                    .is_none_or(|at| at.elapsed() >= CHANNELS_EVERY);
+                if !stale && !resync {
+                    continue;
+                }
+                if stale {
+                    let answer = match discord.command("GET_CHANNELS", json!({ "guild_id": guild }))
+                    {
+                        Ok(answer) => answer,
+                        // Not a member any more, or not allowed: show nothing.
+                        Err(DiscordError::Command { .. }) => Value::Null,
+                        Err(error) => return Err(error),
+                    };
+                    let listed = nexus_sensors::discord_voice_channels(&answer);
+                    let old = tracked.guilds.remove(&guild).unwrap_or_default();
+                    let channels = listed
+                        .into_iter()
+                        .take(MAX_CHANNELS)
+                        .map(|channel| Channel {
+                            members: old
+                                .iter()
+                                .find(|o| o.id == channel.id)
+                                .map(|o| o.members.clone())
+                                .unwrap_or_default(),
+                            id: channel.id,
+                            name: channel.name,
+                        })
+                        .collect();
+                    tracked.guilds.insert(guild.clone(), channels);
+                    tracked.listed.insert(guild.clone(), Instant::now());
+                }
             }
             let ids: Vec<String> = tracked.guilds[&guild]
                 .iter()
                 .map(|c| c.id.clone())
                 .collect();
             for id in ids {
-                let members = match discord.command("GET_CHANNEL", json!({ "channel_id": id })) {
-                    Ok(answer) => answer["voice_states"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .filter_map(DiscordVoiceMember::from_voice_state)
-                        .collect(),
-                    Err(DiscordError::Command { .. }) => Vec::new(),
+                let answer = match discord.command("GET_CHANNEL", json!({ "channel_id": id })) {
+                    Ok(answer) => answer,
+                    Err(DiscordError::Command { .. }) => Value::Null,
                     Err(error) => return Err(error),
                 };
+                let members = answer["voice_states"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(DiscordVoiceMember::from_voice_state)
+                    .collect();
                 if let Some(channel) = tracked.channel_mut(&id) {
                     channel.members = members;
+                    // A private call has no channel list to name it; a group
+                    // may have a name of its own.
+                    if channel.name.is_empty() {
+                        channel.name = answer["name"].as_str().unwrap_or_default().to_string();
+                    }
                 }
                 if tracked.subscribed.insert(id.clone()) {
                     for evt in CHANNEL_EVENTS {
@@ -957,6 +1003,44 @@ impl Worker {
             }
         }
         Ok(())
+    }
+
+    /// Keeps the private call you are in as the only channel under
+    /// [`PRIVATE`]. True when it changed, so its members are read now.
+    fn follow_private(
+        discord: &mut DiscordConnection,
+        tracked: &mut Tracked,
+    ) -> Result<bool, DiscordError> {
+        let current = tracked
+            .guilds
+            .get(PRIVATE)
+            .and_then(|channels| channels.first())
+            .map(|channel| channel.id.clone());
+        if current == tracked.channel {
+            return Ok(false);
+        }
+        if let Some(old) = current {
+            if tracked.subscribed.remove(&old) {
+                for evt in CHANNEL_EVENTS {
+                    match discord.unsubscribe(evt, json!({ "channel_id": old })) {
+                        Ok(()) | Err(DiscordError::Command { .. }) => {}
+                        Err(error) => return Err(error),
+                    }
+                }
+            }
+        }
+        let channels = tracked
+            .channel
+            .clone()
+            .map(|id| Channel {
+                id,
+                ..Channel::default()
+            })
+            .into_iter()
+            .collect();
+        tracked.guilds.insert(PRIVATE.to_string(), channels);
+        tracked.listed.insert(PRIVATE.to_string(), Instant::now());
+        Ok(true)
     }
 
     /// Fetches a few missing pictures.
@@ -1368,6 +1452,30 @@ mod tests {
         voice.kind = WidgetKind::DiscordCall(nexus_config::DiscordCallProps::default());
         profile.pages[0].widgets = vec![voice];
         assert!(profile_wants_discord(&profile).unwrap().current_guild);
+    }
+
+    #[test]
+    fn a_private_call_is_followed_like_a_server() {
+        let wanted = Wanted {
+            current_guild: true,
+            ..Wanted::default()
+        };
+        let mut tracked = Tracked {
+            channel: Some("77".into()),
+            ..Tracked::default()
+        };
+        assert_eq!(
+            tracked.guilds_for(&wanted),
+            BTreeSet::from([PRIVATE.to_string()])
+        );
+        tracked.channel = None;
+        assert!(tracked.guilds_for(&wanted).is_empty());
+        tracked.guild = Some("5".into());
+        tracked.channel = Some("6".into());
+        assert_eq!(
+            tracked.guilds_for(&wanted),
+            BTreeSet::from(["5".to_string()])
+        );
     }
 
     #[test]

@@ -160,6 +160,7 @@ pub enum Word {
     Microphone,
     AlreadyInChannel,
     TouchTheMark,
+    PrivateCall,
 }
 
 pub fn word(word: Word, locale: Locale) -> &'static str {
@@ -246,6 +247,9 @@ pub fn word(word: Word, locale: Locale) -> &'static str {
         (Locale::En, TouchTheMark) => "Touch the center of the mark",
         (Locale::De, TouchTheMark) => "Tippe auf die Mitte der Markierung",
         (Locale::Fr, TouchTheMark) => "Touchez le centre du repère",
+        (Locale::En, PrivateCall) => "Private call",
+        (Locale::De, PrivateCall) => "Privater Anruf",
+        (Locale::Fr, PrivateCall) => "Appel privé",
     }
 }
 
